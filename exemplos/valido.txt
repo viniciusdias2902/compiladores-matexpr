@@ -1,0 +1,16 @@
+/* Programa de exemplo do Trabalho I
+   Comentário de várias linhas */
+Matexpr {
+    int a;
+    float b;
+    int c;
+
+    a + b * c;              // precedência: * antes de +
+    (a + b) * c;            // parênteses
+    a - b - c;              // associatividade à esquerda
+    10 / 2.5 * x;
+    {
+        float d;
+        d * (a - 3.14) / 2;   // bloco aninhado
+    }
+}
