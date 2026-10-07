@@ -7,6 +7,11 @@ Ignora espaços, tabulações, quebras de linha e comentários no estilo C
   - type:    int, float
   - Matexpr: palavra reservada
   - símbolos: + - * / ( ) { } ;
+
+Erros léxicos não interrompem a análise: são registrados em `errors` e o
+léxico se recupera (descarta o caractere inválido, ou devolve o lexema mal
+formado com o tipo mais provável) para que outros erros também sejam
+encontrados.
 """
 
 from .errors import LexicalError
@@ -26,6 +31,7 @@ class Lexer:
         self.source = source
         self.pos = 0
         self.line = 1
+        self.errors: list[LexicalError] = []
 
     # ---------- utilitários ----------
 
@@ -39,6 +45,9 @@ class Lexer:
         if ch == "\n":
             self.line += 1
         return ch
+
+    def _error(self, message: str, line: int) -> None:
+        self.errors.append(LexicalError(message, line))
 
     # ---------- partes ignoradas ----------
 
@@ -57,7 +66,8 @@ class Lexer:
                 self._advance()
                 while not (self._peek() == "*" and self._peek(1) == "/"):
                     if self._peek() == "":
-                        raise LexicalError("comentário não fechado (falta '*/')", start_line)
+                        self._error("comentário não fechado (falta '*/')", start_line)
+                        return
                     self._advance()
                 self._advance()
                 self._advance()
@@ -73,17 +83,18 @@ class Lexer:
         if self._peek() == ".":
             self._advance()
             if not _is_digit(self._peek()):
-                raise LexicalError(
+                self._error(
                     f"número mal formado '{self.source[start:self.pos]}' "
                     "(esperado dígito após o ponto)",
                     line,
                 )
+                return Token(TokenType.NUM, self.source[start:self.pos], line)
             while _is_digit(self._peek()):
                 self._advance()
         if _is_letter(self._peek()) or self._peek() in ("_", "."):
             while _is_letter(self._peek()) or _is_digit(self._peek()) or self._peek() in ("_", "."):
                 self._advance()
-            raise LexicalError(f"número mal formado '{self.source[start:self.pos]}'", line)
+            self._error(f"número mal formado '{self.source[start:self.pos]}'", line)
         return Token(TokenType.NUM, self.source[start:self.pos], line)
 
     def _word(self) -> Token:
@@ -93,30 +104,33 @@ class Lexer:
         if _is_digit(self._peek()) or self._peek() == "_":
             while _is_letter(self._peek()) or _is_digit(self._peek()) or self._peek() == "_":
                 self._advance()
-            raise LexicalError(
+            self._error(
                 f"identificador inválido '{self.source[start:self.pos]}' "
                 "(identificadores devem conter apenas letras)",
                 line,
             )
+            return Token(TokenType.ID, self.source[start:self.pos], line)
         lexeme = self.source[start:self.pos]
         return Token(KEYWORDS.get(lexeme, TokenType.ID), lexeme, line)
 
     # ---------- interface pública ----------
 
     def next_token(self) -> Token:
-        self._skip_ignored()
-        ch = self._peek()
-        if ch == "":
-            return Token(TokenType.EOF, "", self.line)
-        if _is_digit(ch):
-            return self._number()
-        if _is_letter(ch):
-            return self._word()
-        if ch in SYMBOLS:
-            line = self.line
-            self._advance()
-            return Token(SYMBOLS[ch], ch, line)
-        raise LexicalError(f"caractere inválido '{ch}'", self.line)
+        while True:
+            self._skip_ignored()
+            ch = self._peek()
+            if ch == "":
+                return Token(TokenType.EOF, "", self.line)
+            if _is_digit(ch):
+                return self._number()
+            if _is_letter(ch):
+                return self._word()
+            if ch in SYMBOLS:
+                line = self.line
+                self._advance()
+                return Token(SYMBOLS[ch], ch, line)
+            self._error(f"caractere inválido '{ch}'", self.line)
+            self._advance()  # descarta o caractere e tenta de novo
 
     def tokenize(self) -> list[Token]:
         tokens = []

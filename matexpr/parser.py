@@ -86,13 +86,17 @@ class Parser:
 
     def parse(self) -> TranslationResult:
         """program -> Matexpr block EOF"""
+        syntax_errors: list[SyntaxError_] = []
         try:
             self.lookahead = self.lexer.next_token()
             self._match(TokenType.MATEXPR)
             self._block()
             self._match(TokenType.EOF)
-        except CompilerError as e:
-            return TranslationResult(errors=[e])
+        except SyntaxError_ as e:
+            syntax_errors.append(e)
+        errors = sorted(self.lexer.errors + syntax_errors, key=lambda e: e.line)
+        if errors:
+            return TranslationResult(errors=errors)
         return TranslationResult(translations=self.translations)
 
     def _block(self) -> None:

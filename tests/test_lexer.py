@@ -73,10 +73,13 @@ class TestLinhas(unittest.TestCase):
 
 class TestErrosLexicos(unittest.TestCase):
     def assertErro(self, src, linha, trecho):
-        with self.assertRaises(LexicalError) as ctx:
-            Lexer(src).tokenize()
-        self.assertEqual(ctx.exception.line, linha)
-        self.assertIn(trecho, str(ctx.exception))
+        lexer = Lexer(src)
+        lexer.tokenize()
+        self.assertEqual(len(lexer.errors), 1, lexer.errors)
+        err = lexer.errors[0]
+        self.assertIsInstance(err, LexicalError)
+        self.assertEqual(err.line, linha)
+        self.assertIn(trecho, str(err))
 
     def test_caractere_invalido(self):
         self.assertErro("a\nb # c", 2, "caractere inválido '#'")
@@ -98,6 +101,33 @@ class TestErrosLexicos(unittest.TestCase):
 
     def test_comentario_nao_fechado_informa_linha_de_inicio(self):
         self.assertErro("a\n/* nunca fecha\n\n", 2, "comentário não fechado")
+
+
+class TestRecuperacaoLexica(unittest.TestCase):
+    def test_caractere_invalido_e_descartado(self):
+        lexer = Lexer("a # b")
+        self.assertEqual([t.lexeme for t in lexer.tokenize()][:-1], ["a", "b"])
+        self.assertEqual(len(lexer.errors), 1)
+
+    def test_identificador_invalido_vira_id(self):
+        lexer = Lexer("var1 + b")
+        toks = lexer.tokenize()
+        self.assertEqual((toks[0].type, toks[0].lexeme), (T.ID, "var1"))
+        self.assertEqual(toks[1].type, T.PLUS)
+
+    def test_numero_mal_formado_vira_num(self):
+        toks = Lexer("3. + 12abc").tokenize()
+        self.assertEqual([t.type for t in toks], [T.NUM, T.PLUS, T.NUM, T.EOF])
+
+    def test_varios_erros_com_linhas(self):
+        lexer = Lexer("a $\nb1\n@ c\n/* aberto")
+        lexer.tokenize()
+        self.assertEqual([e.line for e in lexer.errors], [1, 2, 3, 4])
+
+    def test_entrada_valida_sem_erros(self):
+        lexer = Lexer("Matexpr { int a; a + 1.5; }")
+        lexer.tokenize()
+        self.assertEqual(lexer.errors, [])
 
 
 if __name__ == "__main__":

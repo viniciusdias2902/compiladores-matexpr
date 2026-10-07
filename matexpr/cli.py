@@ -3,7 +3,6 @@
 import argparse
 import sys
 
-from .errors import CompilerError
 from .lexer import Lexer
 from .parser import translate
 
@@ -24,15 +23,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Erro ao abrir '{args.arquivo}': {e.strerror}", file=sys.stderr)
         return 2
 
-    try:
-        if args.tokens:
-            print("Tokens:")
-            for tok in Lexer(source).tokenize():
-                print(f"  {tok}")
-            print()
-    except CompilerError as e:
-        print(e, file=sys.stderr)
-        return 1
+    if args.tokens:
+        print("Tokens:")
+        for tok in Lexer(source).tokenize():
+            print(f"  {tok}")
+        print()
 
     result = translate(source)
     if not result.ok:
