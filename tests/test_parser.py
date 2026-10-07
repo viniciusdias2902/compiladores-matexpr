@@ -134,6 +134,52 @@ class TestErrosSintaticos(unittest.TestCase):
         self.assertErro("", 1, "fim do arquivo")
 
 
+class TestRecuperacaoDeErros(unittest.TestCase):
+    def linhas(self, src):
+        return [e.line for e in errors(src)]
+
+    def test_relata_varios_erros(self):
+        src = "Matexpr {\n a + ;\n b * (a;\n a + b;\n c c;\n}"
+        self.assertEqual(self.linhas(src), [2, 3, 5])
+
+    def test_continua_apos_erro_em_declaracao(self):
+        src = "Matexpr {\n int ;\n float b;\n int 3;\n b + ;\n}"
+        self.assertEqual(self.linhas(src), [2, 4, 5])
+
+    def test_declaracao_apos_comando_e_analisada(self):
+        src = "Matexpr {\n a;\n int b\n c;\n d + ;\n}"
+        msgs = [str(e) for e in errors(src)]
+        self.assertEqual(len(msgs), 3, msgs)
+        self.assertIn("declaração 'int' após comandos", msgs[0])
+
+    def test_bloco_aninhado_dentro_de_expressao_com_erro(self):
+        src = "Matexpr {\n a + { b; }\n c - ;\n}"
+        self.assertEqual(self.linhas(src), [2, 3])
+
+    def test_sem_erros_em_cascata_por_chave_faltando(self):
+        self.assertEqual(len(errors("Matexpr {\n { a;\n")), 1)
+
+    def test_sem_matexpr_continua_no_bloco(self):
+        msgs = [str(e) for e in errors("foo { a + ; }")]
+        self.assertEqual(len(msgs), 2, msgs)
+        self.assertIn("esperado 'Matexpr'", msgs[0])
+
+    def test_erro_sintatico_na_linha_de_erro_lexico_e_suprimido(self):
+        msgs = [str(e) for e in errors("Matexpr {\n a $ b;\n c + ;\n}")]
+        self.assertEqual(len(msgs), 2, msgs)
+        self.assertIn("Erro léxico na linha 2", msgs[0])
+        self.assertIn("Erro sintático na linha 3", msgs[1])
+
+    def test_erros_ordenados_por_linha(self):
+        src = "Matexpr {\n a + ;\n b1;\n c # ;\n}"
+        self.assertEqual(self.linhas(src), sorted(self.linhas(src)))
+
+    def test_nenhuma_traducao_quando_ha_erros(self):
+        result = translate("Matexpr { a + b; c + ; }")
+        self.assertFalse(result.ok)
+        self.assertEqual(result.translations, [])
+
+
 class TestErrosLexicosNoParser(unittest.TestCase):
     def test_erro_lexico_propagado_com_linha(self):
         err = errors("Matexpr {\n int a;\n a $ b;\n}")[0]

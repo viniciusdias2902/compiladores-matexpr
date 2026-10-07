@@ -64,8 +64,15 @@ class Parser:
         self.lookahead: Token | None = None
         self._current: list[str] = []      # tradução da expressão em andamento
         self.translations: list[str] = []  # uma tradução por comando expr ;
+        self.errors: list[SyntaxError_] = []
+        self._last_error_token: Token | None = None
 
     # ---------- utilitários ----------
+
+    def _advance(self) -> Token:
+        tok = self.lookahead
+        self.lookahead = self.lexer.next_token()
+        return tok
 
     def _error(self, expected: str) -> SyntaxError_:
         tok = self.lookahead
@@ -75,9 +82,35 @@ class Parser:
     def _match(self, expected: TokenType) -> Token:
         if self.lookahead.type is not expected:
             raise self._error(DESCRIPTIONS[expected])
-        tok = self.lookahead
-        self.lookahead = self.lexer.next_token()
-        return tok
+        return self._advance()
+
+    def _expect(self, expected: TokenType) -> None:
+        """Como _match, mas registra o erro e segue como se o token estivesse
+        presente (recuperação em nível de frase). Usado para '{' e '}'."""
+        if self.lookahead.type is expected:
+            self._advance()
+        else:
+            self._report(self._error(DESCRIPTIONS[expected]))
+
+    def _report(self, err: SyntaxError_) -> None:
+        """Registra um erro sintático, evitando erros em cascata."""
+        # Sem consumir nenhum token desde o último erro: é consequência dele.
+        if self.lookahead is self._last_error_token:
+            return
+        self._last_error_token = self.lookahead
+        # A linha já tem erro léxico: o erro sintático provavelmente é efeito dele.
+        if any(e.line == err.line for e in self.lexer.errors):
+            return
+        self.errors.append(err)
+
+    def _synchronize(self, *stop: TokenType) -> None:
+        """Modo pânico: descarta tokens até um ponto seguro (';', '{', '}',
+        fim do arquivo ou um dos tokens em `stop`). O ';' é consumido."""
+        sync = (TokenType.SEMI, TokenType.LBRACE, TokenType.RBRACE, TokenType.EOF, *stop)
+        while self.lookahead.type not in sync:
+            self._advance()
+        if self.lookahead.type is TokenType.SEMI:
+            self._advance()
 
     def _emit(self, symbol: str) -> None:
         self._current.append(symbol)
@@ -86,25 +119,28 @@ class Parser:
 
     def parse(self) -> TranslationResult:
         """program -> Matexpr block EOF"""
-        syntax_errors: list[SyntaxError_] = []
-        try:
-            self.lookahead = self.lexer.next_token()
-            self._match(TokenType.MATEXPR)
-            self._block()
-            self._match(TokenType.EOF)
-        except SyntaxError_ as e:
-            syntax_errors.append(e)
-        errors = sorted(self.lexer.errors + syntax_errors, key=lambda e: e.line)
+        self.lookahead = self.lexer.next_token()
+        if self.lookahead.type is TokenType.MATEXPR:
+            self._advance()
+        else:
+            self._report(self._error(DESCRIPTIONS[TokenType.MATEXPR]))
+            while self.lookahead.type not in (TokenType.LBRACE, TokenType.EOF):
+                self._advance()
+        self._block()
+        if self.lookahead.type is not TokenType.EOF:
+            self._report(self._error(DESCRIPTIONS[TokenType.EOF]))
+
+        errors = sorted(self.lexer.errors + self.errors, key=lambda e: e.line)
         if errors:
             return TranslationResult(errors=errors)
         return TranslationResult(translations=self.translations)
 
     def _block(self) -> None:
         """block -> { decls stmts }"""
-        self._match(TokenType.LBRACE)
+        self._expect(TokenType.LBRACE)
         self._decls()
         self._stmts()
-        self._match(TokenType.RBRACE)
+        self._expect(TokenType.RBRACE)
 
     def _decls(self) -> None:
         """decls -> decl decls | ε"""
@@ -113,32 +149,42 @@ class Parser:
 
     def _decl(self) -> None:
         """decl -> type id ;"""
-        self._match(TokenType.TYPE)
-        self._match(TokenType.ID)
-        self._match(TokenType.SEMI)
+        try:
+            self._match(TokenType.TYPE)
+            self._match(TokenType.ID)
+            self._match(TokenType.SEMI)
+        except SyntaxError_ as e:
+            self._report(e)
+            self._synchronize(TokenType.TYPE)
 
     def _stmts(self) -> None:
         """stmts -> stmt stmts | ε   (ε quando lookahead = '}')"""
-        while self.lookahead.type is not TokenType.RBRACE:
+        while self.lookahead.type not in (TokenType.RBRACE, TokenType.EOF):
             self._stmt()
 
     def _stmt(self) -> None:
         """stmt -> block | expr ;"""
         if self.lookahead.type is TokenType.LBRACE:
             self._block()
-        elif self.lookahead.type in FIRST_EXPR:
+            return
+        if self.lookahead.type is TokenType.TYPE:
+            self._report(SyntaxError_(
+                f"declaração '{self.lookahead.lexeme}' após comandos "
+                "(declarações devem vir no início do bloco)",
+                self.lookahead.line,
+            ))
+            self._decl()  # analisa a declaração mesmo assim
+            return
+        try:
+            if self.lookahead.type not in FIRST_EXPR:
+                raise self._error("comando (bloco ou expressão) ou '}'")
             self._current = []
             self._expr()
             self._match(TokenType.SEMI)
             self.translations.append(" ".join(self._current))
-        elif self.lookahead.type is TokenType.TYPE:
-            raise SyntaxError_(
-                f"declaração '{self.lookahead.lexeme}' após comandos "
-                "(declarações devem vir no início do bloco)",
-                self.lookahead.line,
-            )
-        else:
-            raise self._error("comando (bloco ou expressão) ou '}'")
+        except SyntaxError_ as e:
+            self._report(e)
+            self._synchronize()
 
     def _expr(self) -> None:
         """expr -> term restExpr"""
