@@ -21,3 +21,9 @@ class SyntaxError_(CompilerError):
     """Erro sintático (o sufixo evita conflito com o SyntaxError do Python)."""
 
     kind = "Erro sintático"
+
+
+class SemanticWarning(CompilerError):
+    """Aviso semântico: não impede a tradução."""
+
+    kind = "Aviso"

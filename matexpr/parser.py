@@ -37,12 +37,17 @@ Observações sobre a gramática do enunciado:
   * stmt -> block nunca alcança expr; foi adicionada a alternativa expr ;
   * As recursões restExpr e restTerm são implementadas como laços (while),
     equivalente à eliminação da recursão de cauda.
+
+Análise semântica: as declarações (decl) são guardadas numa tabela de
+símbolos com um escopo por bloco. Usar variável não declarada ou redeclarar
+uma variável no mesmo escopo gera um *aviso* (não impede a tradução).
 """
 
 from dataclasses import dataclass, field
 
-from .errors import CompilerError, SyntaxError_
+from .errors import CompilerError, SemanticWarning, SyntaxError_
 from .lexer import Lexer
+from .symbols import Symbol, SymbolTable
 from .tokens import DESCRIPTIONS, Token, TokenType
 
 FIRST_EXPR = (TokenType.LPAREN, TokenType.NUM, TokenType.ID)
@@ -52,6 +57,7 @@ FIRST_EXPR = (TokenType.LPAREN, TokenType.NUM, TokenType.ID)
 class TranslationResult:
     translations: list[str] = field(default_factory=list)  # uma por comando expr ;
     errors: list[CompilerError] = field(default_factory=list)
+    warnings: list[SemanticWarning] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -67,6 +73,9 @@ class Parser:
         self.errors: list[SyntaxError_] = []
         self._last_error_token: Token | None = None
         self._previous: Token | None = None  # último token consumido
+        self.symbols = SymbolTable()
+        self.warnings: list[SemanticWarning] = []
+        self._undeclared_warned: set[str] = set()
 
     # ---------- utilitários ----------
 
@@ -140,14 +149,16 @@ class Parser:
 
         errors = sorted(self.lexer.errors + self.errors, key=lambda e: e.line)
         if errors:
-            return TranslationResult(errors=errors)
-        return TranslationResult(translations=self.translations)
+            return TranslationResult(errors=errors, warnings=self.warnings)
+        return TranslationResult(translations=self.translations, warnings=self.warnings)
 
     def _block(self) -> None:
         """block -> { decls stmts }"""
         self._expect(TokenType.LBRACE)
+        self.symbols.push_scope()
         self._decls()
         self._stmts()
+        self.symbols.pop_scope()
         self._expect(TokenType.RBRACE)
 
     def _decls(self) -> None:
@@ -158,12 +169,19 @@ class Parser:
     def _decl(self) -> None:
         """decl -> type id ;"""
         try:
-            self._match(TokenType.TYPE)
-            self._match(TokenType.ID)
+            type_ = self._match(TokenType.TYPE)
+            id_ = self._match(TokenType.ID)
             self._match(TokenType.SEMI)
         except SyntaxError_ as e:
             self._report(e)
             self._synchronize(TokenType.TYPE)
+            return
+        previous = self.symbols.declare(Symbol(id_.lexeme, type_.lexeme, id_.line))
+        if previous is not None:
+            self.warnings.append(SemanticWarning(
+                f"variável '{id_.lexeme}' já declarada neste bloco na linha {previous.line}",
+                id_.line,
+            ))
 
     def _stmts(self) -> None:
         """stmts -> stmt stmts | ε   (ε quando lookahead = '}')"""
@@ -217,10 +235,23 @@ class Parser:
             self._match(TokenType.LPAREN)
             self._expr()
             self._match(TokenType.RPAREN)
-        elif t in (TokenType.NUM, TokenType.ID):
+        elif t is TokenType.NUM:
             self._emit(self._match(t).lexeme)
+        elif t is TokenType.ID:
+            tok = self._match(t)
+            self._check_declared(tok)
+            self._emit(tok.lexeme)
         else:
             raise self._error("'(', número ou identificador")
+
+
+    # ---------- análise semântica ----------
+
+    def _check_declared(self, tok: Token) -> None:
+        """Avisa (uma vez por nome) sobre o uso de variável não declarada."""
+        if self.symbols.lookup(tok.lexeme) is None and tok.lexeme not in self._undeclared_warned:
+            self._undeclared_warned.add(tok.lexeme)
+            self.warnings.append(SemanticWarning(f"variável '{tok.lexeme}' não declarada", tok.line))
 
 
 def translate(source: str) -> TranslationResult:

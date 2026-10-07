@@ -30,9 +30,10 @@ def main(argv: list[str] | None = None) -> int:
         print()
 
     result = translate(source)
+    for diag in sorted(result.errors + result.warnings, key=lambda d: d.line):
+        print(diag, file=sys.stderr)
     if not result.ok:
-        for err in result.errors:
-            print(err, file=sys.stderr)
+        print(f"{len(result.errors)} erro(s) encontrado(s).", file=sys.stderr)
         return 1
 
     if not result.translations:

@@ -38,6 +38,25 @@ class TestCLI(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertIn(esperado, err)
 
+    def test_aviso_vai_para_stderr_e_traducao_continua(self):
+        code, out, err = run(os.path.join(EXEMPLOS, "valido.txt"))
+        self.assertEqual(code, 0)
+        self.assertIn("Aviso na linha 11: variável 'x' não declarada", err)
+        self.assertNotIn("Aviso", out)
+
+    def test_relata_total_de_erros(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write("Matexpr {\n a + ;\n b # c;\n}")
+        try:
+            code, out, err = run(f.name)
+        finally:
+            os.unlink(f.name)
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertIn("Erro sintático na linha 2", err)
+        self.assertIn("Erro léxico na linha 3", err)
+        self.assertIn("2 erro(s) encontrado(s).", err)
+
     def test_arquivo_inexistente(self):
         code, _, err = run("nao_existe.txt")
         self.assertEqual(code, 2)
