@@ -95,10 +95,10 @@ class TestErrosSintaticos(unittest.TestCase):
         self.assertErro("Matexpr {\n int a;\n a + 1;\n", 4, "fim do arquivo")
 
     def test_falta_ponto_e_virgula_expr(self):
-        self.assertErro("Matexpr {\n a + b\n}", 3, "esperado ';'")
+        self.assertErro("Matexpr {\n a + b\n}", 2, "esperado ';' após 'b', encontrado '}'")
 
     def test_falta_ponto_e_virgula_decl(self):
-        self.assertErro("Matexpr {\n int a\n float b;\n}", 3, "esperado ';'")
+        self.assertErro("Matexpr {\n int a\n float b;\n}", 2, "esperado ';' após 'a'")
 
     def test_decl_sem_identificador(self):
         self.assertErro("Matexpr {\n int ;\n}", 2, "esperado identificador")
@@ -108,6 +108,9 @@ class TestErrosSintaticos(unittest.TestCase):
 
     def test_decl_apos_comando(self):
         self.assertErro("Matexpr {\n a;\n int b;\n}", 3, "declaração 'int' após comandos")
+
+    def test_falta_ponto_e_virgula_com_linhas_em_branco(self):
+        self.assertErro("Matexpr {\n (a + b)\n\n\n c;\n}", 2, "após ')'")
 
     def test_operador_sem_operando(self):
         self.assertErro("Matexpr {\n a + ;\n}", 2, "esperado '(', número ou identificador")

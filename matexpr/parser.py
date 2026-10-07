@@ -66,23 +66,31 @@ class Parser:
         self.translations: list[str] = []  # uma tradução por comando expr ;
         self.errors: list[SyntaxError_] = []
         self._last_error_token: Token | None = None
+        self._previous: Token | None = None  # último token consumido
 
     # ---------- utilitários ----------
 
     def _advance(self) -> Token:
-        tok = self.lookahead
+        tok = self._previous = self.lookahead
         self.lookahead = self.lexer.next_token()
         return tok
 
-    def _error(self, expected: str) -> SyntaxError_:
+    def _error(self, expected: str, line: int | None = None) -> SyntaxError_:
         tok = self.lookahead
         found = DESCRIPTIONS[TokenType.EOF] if tok.type is TokenType.EOF else f"'{tok.lexeme}'"
-        return SyntaxError_(f"esperado {expected}, encontrado {found}", tok.line)
+        return SyntaxError_(f"esperado {expected}, encontrado {found}", line or tok.line)
 
     def _match(self, expected: TokenType) -> Token:
         if self.lookahead.type is not expected:
+            if expected is TokenType.SEMI and self._previous is not None:
+                raise self._missing_semicolon()
             raise self._error(DESCRIPTIONS[expected])
         return self._advance()
+
+    def _missing_semicolon(self) -> SyntaxError_:
+        """O ';' falta logo após o token anterior; por isso o erro é relatado
+        na linha dele, e não na linha do próximo token (que pode estar abaixo)."""
+        return self._error(f"';' após '{self._previous.lexeme}'", self._previous.line)
 
     def _expect(self, expected: TokenType) -> None:
         """Como _match, mas registra o erro e segue como se o token estivesse

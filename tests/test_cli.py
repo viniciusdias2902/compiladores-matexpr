@@ -27,7 +27,7 @@ class TestCLI(unittest.TestCase):
 
     def test_exemplos_com_erro(self):
         casos = {
-            "erro_ponto_virgula.txt": "Erro sintático na linha 4",
+            "erro_ponto_virgula.txt": "Erro sintático na linha 3",
             "erro_lexico.txt": "Erro léxico na linha 3",
             "erro_identificador.txt": "Erro léxico na linha 2",
             "erro_chave.txt": "Erro sintático na linha 4",
