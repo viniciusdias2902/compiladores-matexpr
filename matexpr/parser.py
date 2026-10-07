@@ -39,17 +39,29 @@ Observações sobre a gramática do enunciado:
     equivalente à eliminação da recursão de cauda.
 """
 
-from .errors import SyntaxError_
+from dataclasses import dataclass, field
+
+from .errors import CompilerError, SyntaxError_
 from .lexer import Lexer
 from .tokens import DESCRIPTIONS, Token, TokenType
 
 FIRST_EXPR = (TokenType.LPAREN, TokenType.NUM, TokenType.ID)
 
 
+@dataclass
+class TranslationResult:
+    translations: list[str] = field(default_factory=list)  # uma por comando expr ;
+    errors: list[CompilerError] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
+
+
 class Parser:
     def __init__(self, source: str):
         self.lexer = Lexer(source)
-        self.lookahead: Token = self.lexer.next_token()
+        self.lookahead: Token | None = None
         self._current: list[str] = []      # tradução da expressão em andamento
         self.translations: list[str] = []  # uma tradução por comando expr ;
 
@@ -72,12 +84,16 @@ class Parser:
 
     # ---------- não-terminais ----------
 
-    def parse(self) -> list[str]:
+    def parse(self) -> TranslationResult:
         """program -> Matexpr block EOF"""
-        self._match(TokenType.MATEXPR)
-        self._block()
-        self._match(TokenType.EOF)
-        return self.translations
+        try:
+            self.lookahead = self.lexer.next_token()
+            self._match(TokenType.MATEXPR)
+            self._block()
+            self._match(TokenType.EOF)
+        except CompilerError as e:
+            return TranslationResult(errors=[e])
+        return TranslationResult(translations=self.translations)
 
     def _block(self) -> None:
         """block -> { decls stmts }"""
@@ -149,6 +165,7 @@ class Parser:
             raise self._error("'(', número ou identificador")
 
 
-def translate(source: str) -> list[str]:
-    """Traduz um programa Matexpr e devolve as expressões em notação pós-fixada."""
+def translate(source: str) -> TranslationResult:
+    """Traduz um programa Matexpr. O resultado traz as expressões em notação
+    pós-fixada ou a lista de erros encontrados."""
     return Parser(source).parse()

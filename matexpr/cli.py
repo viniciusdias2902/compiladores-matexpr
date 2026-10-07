@@ -30,13 +30,18 @@ def main(argv: list[str] | None = None) -> int:
             for tok in Lexer(source).tokenize():
                 print(f"  {tok}")
             print()
-        translations = translate(source)
     except CompilerError as e:
         print(e, file=sys.stderr)
         return 1
 
-    if not translations:
+    result = translate(source)
+    if not result.ok:
+        for err in result.errors:
+            print(err, file=sys.stderr)
+        return 1
+
+    if not result.translations:
         print("Programa válido, mas nenhuma expressão foi encontrada.")
-    for expr in translations:
+    for expr in result.translations:
         print(expr)
     return 0
