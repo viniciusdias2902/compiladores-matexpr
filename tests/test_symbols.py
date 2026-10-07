@@ -87,6 +87,16 @@ class TestAvisosSemanticos(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(len(result.warnings), 1)
 
+    def test_declaracao_sem_ponto_e_virgula_registra_variavel(self):
+        result = translate("Matexpr {\n int a\n a + 1;\n}")
+        self.assertFalse(result.ok)
+        self.assertEqual(result.warnings, [])
+
+    def test_sem_aviso_para_identificador_invalido(self):
+        result = translate("Matexpr {\n var1 + 1;\n}")
+        self.assertEqual(len(result.errors), 1)
+        self.assertEqual(result.warnings, [])
+
 
 if __name__ == "__main__":
     unittest.main()

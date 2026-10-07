@@ -168,6 +168,7 @@ class Parser:
 
     def _decl(self) -> None:
         """decl -> type id ;"""
+        type_ = id_ = None
         try:
             type_ = self._match(TokenType.TYPE)
             id_ = self._match(TokenType.ID)
@@ -175,7 +176,10 @@ class Parser:
         except SyntaxError_ as e:
             self._report(e)
             self._synchronize(TokenType.TYPE)
+        if id_ is None:
             return
+        # Mesmo com erro (ex.: falta ';'), tipo e nome foram lidos: a variável
+        # é registrada para não gerar avisos falsos de "não declarada".
         previous = self.symbols.declare(Symbol(id_.lexeme, type_.lexeme, id_.line))
         if previous is not None:
             self.warnings.append(SemanticWarning(
@@ -249,6 +253,8 @@ class Parser:
 
     def _check_declared(self, tok: Token) -> None:
         """Avisa (uma vez por nome) sobre o uso de variável não declarada."""
+        if any(e.line == tok.line for e in self.lexer.errors):
+            return  # o nome pode ser justamente o lexema inválido (ex.: 'var1')
         if self.symbols.lookup(tok.lexeme) is None and tok.lexeme not in self._undeclared_warned:
             self._undeclared_warned.add(tok.lexeme)
             self.warnings.append(SemanticWarning(f"variável '{tok.lexeme}' não declarada", tok.line))
