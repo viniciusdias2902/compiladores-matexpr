@@ -1,0 +1,10 @@
+/* Avisos semânticos: a tradução acontece mesmo assim */
+Matexpr {
+    int a;
+    float a;          // redeclaração no mesmo bloco
+    a + b;            // b não declarada
+    {
+        float a;      // permitido: bloco interno esconde o externo
+        a * 2;
+    }
+}

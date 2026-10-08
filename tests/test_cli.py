@@ -57,6 +57,19 @@ class TestCLI(unittest.TestCase):
         self.assertIn("Erro léxico na linha 3", err)
         self.assertIn("2 erro(s) encontrado(s).", err)
 
+    def test_exemplo_varios_erros(self):
+        code, out, err = run(os.path.join(EXEMPLOS, "varios_erros.txt"))
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")
+        self.assertNotIn("Aviso", err)
+        self.assertIn("4 erro(s) encontrado(s).", err)
+
+    def test_exemplo_avisos(self):
+        code, out, err = run(os.path.join(EXEMPLOS, "avisos.txt"))
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines(), ["a b +", "a 2 *"])
+        self.assertEqual(len(err.splitlines()), 2)
+
     def test_arquivo_inexistente(self):
         code, _, err = run("nao_existe.txt")
         self.assertEqual(code, 2)
